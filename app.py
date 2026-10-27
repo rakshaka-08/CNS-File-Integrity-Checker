@@ -1,9 +1,8 @@
-
 import streamlit as st
 import hashlib
 import os
-from hashing import calculate_sha256
-from verification import verify_file
+import pandas as pd
+from datetime import datetime
 
 # Page configuration
 st.set_page_config(
@@ -12,38 +11,102 @@ st.set_page_config(
     layout="centered"
 )
 
-# Initialize session state
-if "history" not in st.session_state:
-    st.session_state.history = []
+# CSV file used to store history
+HISTORY_FILE = "history.csv"
+
+# Function to calculate SHA-256 hash
+def calculate_file_hash(file_bytes):
+    return hashlib.sha256(file_bytes).hexdigest()
+
+
+# Function to save activity in CSV
+def save_history(file_name, file_hash, status):
+    record = {
+        "File Name": file_name,
+        "SHA-256 Hash": file_hash,
+        "Date and Time": datetime.now().strftime(
+            "%d-%m-%Y %H:%M:%S"
+        ),
+        "Status": status
+    }
+
+    df = pd.DataFrame([record])
+
+    if os.path.exists(HISTORY_FILE):
+        df.to_csv(
+            HISTORY_FILE,
+            mode="a",
+            header=False,
+            index=False
+        )
+    else:
+        df.to_csv(HISTORY_FILE, index=False)
+
+
+# Function to load saved history
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        try:
+            return pd.read_csv(HISTORY_FILE)
+        except pd.errors.EmptyDataError:
+            pass
+
+    return pd.DataFrame(
+        columns=[
+            "File Name",
+            "SHA-256 Hash",
+            "Date and Time",
+            "Status"
+        ]
+    )
+
 
 # Main heading
 st.title("🔐 File Integrity Checker")
-st.write("A simple tool to generate SHA-256 hashes and verify file integrity.")
+
+st.write(
+    "A simple application to generate SHA-256 hashes "
+    "and verify the integrity of files."
+)
 
 st.divider()
 
 # Sidebar navigation
 st.sidebar.title("Navigation")
+
 page = st.sidebar.radio(
     "Choose an option",
-    ["Home", "Generate SHA-256 Hash", "Verify File Integrity", "History", "About"]
+    [
+        "Home",
+        "Generate SHA-256 Hash",
+        "Verify File Integrity",
+        "History",
+        "About"
+    ]
 )
 
-# Home page
+
+# HOME PAGE
 if page == "Home":
-    st.header("Welcome")
+
+    st.header("Welcome!")
+
     st.write(
-        "This application helps you check whether a file has been changed "
-        "by using the SHA-256 hashing algorithm."
+        "This application helps users check whether a file "
+        "has been modified using the SHA-256 hashing algorithm."
     )
 
     st.subheader("Available Features")
-    st.write("- Generate SHA-256 hash of a file")
-    st.write("- Verify whether a file has been modified")
-    st.write("- View previous verification activities")
 
-# Generate hash page
+    st.write("1. Generate SHA-256 hash of a file")
+    st.write("2. Verify file integrity")
+    st.write("3. View previous activities")
+    st.write("4. Save history permanently using CSV storage")
+
+
+# GENERATE HASH PAGE
 elif page == "Generate SHA-256 Hash":
+
     st.header("Generate SHA-256 Hash")
 
     uploaded_file = st.file_uploader(
@@ -52,23 +115,33 @@ elif page == "Generate SHA-256 Hash":
     )
 
     if uploaded_file is not None:
+
         file_bytes = uploaded_file.getvalue()
-        file_hash = hashlib.sha256(file_bytes).hexdigest()
 
-        st.success("Hash generated successfully!")
-        st.write("**File name:**", uploaded_file.name)
-        st.code(file_hash, language="text")
+        file_hash = calculate_file_hash(file_bytes)
 
-        if st.button("Save to History"):
-            st.session_state.history.append({
-                "file": uploaded_file.name,
-                "hash": file_hash,
-                "status": "Hash Generated"
-            })
-            st.success("Hash saved to history.")
+        st.success("SHA-256 hash generated successfully!")
 
-# Verify file page
+        st.write("**File Name:**", uploaded_file.name)
+
+        st.write("**SHA-256 Hash:**")
+
+        st.code(file_hash)
+
+        if st.button("Save Hash to History"):
+
+            save_history(
+                uploaded_file.name,
+                file_hash,
+                "Hash Generated"
+            )
+
+            st.success("Hash saved to history successfully!")
+
+
+# VERIFY FILE INTEGRITY PAGE
 elif page == "Verify File Integrity":
+
     st.header("Verify File Integrity")
 
     uploaded_file = st.file_uploader(
@@ -81,70 +154,117 @@ elif page == "Verify File Integrity":
     )
 
     if st.button("Verify File"):
+
         if uploaded_file is None:
+
             st.warning("Please upload a file.")
 
         elif not original_hash.strip():
+
             st.warning("Please enter the original SHA-256 hash.")
 
-        elif len(original_hash.strip()) != 64 or any(
-            char not in "0123456789abcdefABCDEF"
-            for char in original_hash.strip()
+        elif (
+            len(original_hash.strip()) != 64
+            or any(
+                char not in "0123456789abcdefABCDEF"
+                for char in original_hash.strip()
+            )
         ):
-            st.error("Please enter a valid 64-character SHA-256 hash.")
+
+            st.error("Please enter a valid SHA-256 hash.")
 
         else:
-            current_hash = hashlib.sha256(
-                uploaded_file.getvalue()
-            ).hexdigest()
+
+            file_bytes = uploaded_file.getvalue()
+
+            current_hash = calculate_file_hash(file_bytes)
+
+            st.write("**File Name:**", uploaded_file.name)
+
+            st.write("**Current SHA-256 Hash:**")
+
+            st.code(current_hash)
 
             if current_hash == original_hash.strip().lower():
-                st.success("File is unchanged. Integrity verified.")
+
+                st.success(
+                    "File is unchanged. Integrity verified!"
+                )
+
                 status = "Unchanged"
+
             else:
-                st.error("File has been modified!")
+
+                st.error(
+                    "File has been modified! Integrity check failed."
+                )
+
                 status = "Modified"
 
-            st.write("**File name:**", uploaded_file.name)
-            st.write("**Current SHA-256 hash:**")
-            st.code(current_hash, language="text")
+            # Save verification result automatically
+            save_history(
+                uploaded_file.name,
+                current_hash,
+                status
+            )
 
-            st.session_state.history.append({
-                "file": uploaded_file.name,
-                "hash": current_hash,
-                "status": status
-            })
+            st.info("Verification result saved to history.")
 
-# History page
+
+# HISTORY PAGE
 elif page == "History":
+
     st.header("Verification History")
 
-    if st.session_state.history:
-        for index, record in enumerate(
-            reversed(st.session_state.history), start=1
-        ):
-            st.subheader(f"Record {index}")
-            st.write("**File:**", record["file"])
-            st.write("**SHA-256:**")
-            st.code(record["hash"], language="text")
-            st.write("**Status:**", record["status"])
-            st.divider()
-    else:
-        st.info("No history available yet.")
+    history = load_history()
 
-# About page
+    if not history.empty:
+
+        st.write(
+            "Below are the previously saved hashing "
+            "and verification activities."
+        )
+
+        st.dataframe(
+            history,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        st.write("**Total Records:**", len(history))
+
+        csv_data = history.to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            label="Download History as CSV",
+            data=csv_data,
+            file_name="verification_history.csv",
+            mime="text/csv"
+        )
+
+    else:
+
+        st.info("No history available yet. Generate a hash or verify a file.")
+
+
+# ABOUT PAGE
 elif page == "About":
+
     st.header("About This Project")
+
     st.write(
-        "The File Integrity Checker is a Cyber and Network Security "
-        "mini-project that uses the SHA-256 cryptographic hash algorithm "
-        "to identify changes in files."
+        "The File Integrity Checker is a Cyber and Network "
+        "Security mini-project that uses the SHA-256 "
+        "cryptographic hashing algorithm to detect changes in files."
     )
 
-    st.subheader("Technology Used")
+    st.subheader("Technologies Used")
+
     st.write("- Python")
     st.write("- Streamlit")
     st.write("- SHA-256")
-    st.write("- hashlib library")
+    st.write("- hashlib")
+    st.write("- Pandas")
+    st.write("- CSV file storage")
 
-    st.write("**Project:** CNS - File Integrity Checker")
+    st.write("**Project Name:** CNS - File Integrity Checker")
