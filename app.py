@@ -216,6 +216,7 @@ elif page == "Generate SHA-256 Hash":
 # VERIFY FILE INTEGRITY PAGE
 # --------------------------------
 
+
 elif page == "Verify File Integrity":
 
     st.title("Verify File Integrity")
@@ -225,9 +226,50 @@ elif page == "Verify File Integrity":
         key="verify_upload"
     )
 
-    original_hash = st.text_input(
-        "Enter the original SHA-256 hash"
-    )
+    references = load_references()
+
+    original_hash = ""
+
+    if not references.empty:
+
+        st.subheader("Choose Original Hash")
+
+        use_saved = st.radio(
+            "Select hash source",
+            ["Use Saved Reference", "Enter Hash Manually"]
+        )
+
+        if use_saved == "Use Saved Reference":
+
+            selected_index = st.selectbox(
+                "Select saved reference",
+                references.index,
+                format_func=lambda i: (
+                    str(references.loc[i, "File Name"])
+                    + " - "
+                    + str(references.loc[i, "Date Saved"])
+                )
+            )
+
+            original_hash = str(
+                references.loc[selected_index, "SHA-256 Hash"]
+            )
+
+        else:
+            original_hash = st.text_input(
+                "Enter original SHA-256 hash"
+            )
+
+    else:
+
+        st.info(
+            "No saved references found. Enter the original "
+            "hash manually or save a reference first."
+        )
+
+        original_hash = st.text_input(
+            "Enter original SHA-256 hash"
+        )
 
     if st.button("Verify File"):
 
@@ -237,7 +279,7 @@ elif page == "Verify File Integrity":
 
         elif not original_hash.strip():
 
-            st.warning("Please enter the original SHA-256 hash.")
+            st.warning("Please select or enter an original hash.")
 
         elif (
             len(original_hash.strip()) != 64
@@ -251,30 +293,22 @@ elif page == "Verify File Integrity":
 
         else:
 
-            file_bytes = uploaded_file.getvalue()
-
-            current_hash = calculate_file_hash(file_bytes)
+            current_hash = calculate_file_hash(
+                uploaded_file.getvalue()
+            )
 
             st.write("**File Name:**", uploaded_file.name)
-
             st.write("**Current SHA-256 Hash:**")
-
             st.code(current_hash)
 
             if current_hash == original_hash.strip().lower():
 
-                st.success(
-                    "File is unchanged. Integrity verified!"
-                )
-
+                st.success("File is unchanged. Integrity verified!")
                 status = "Unchanged"
 
             else:
 
-                st.error(
-                    "File has been modified! Integrity check failed."
-                )
-
+                st.error("File has been modified!")
                 status = "Modified"
 
             save_history(
